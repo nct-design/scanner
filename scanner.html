@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>PDA 圖書連掃盤點工具 (即時回饋版 v6 + 雲端上傳)</title>
+  <title>PDA 圖書連掃盤點工具 (PDA 相容強化版 + 雲端上傳)</title>
   <style>
     :root {
       --bg: #f3f5f8;
@@ -80,7 +80,7 @@
       min-width: 0;
       font-size: 20px;
       font-weight: 700;
-      padding: 8px 10px;
+      padding: 10px;
       border: 1px solid var(--border);
       border-radius: 6px;
       letter-spacing: 1px;
@@ -94,7 +94,7 @@
     .btn-submit {
       background: var(--accent);
       color: #fff;
-      padding: 10px 14px;
+      padding: 11px 14px;
       font-size: 15px;
       font-weight: 700;
       border-radius: 6px;
@@ -195,6 +195,7 @@
     }
     button:active { opacity: 0.85; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-commit-now { background: #1d4ed8; color: #fff; grid-column: span 2; font-size: 15px; }
     .btn-upload { background: var(--cloud); color: #fff; grid-column: span 2; font-size: 17px; }
     .btn-del { background: #fee2e2; color: #b91c1c; }
     .btn-clear { background: #e5e7eb; color: #374151; }
@@ -246,7 +247,8 @@
       padding: 8px 10px;
       border-radius: 6px;
       font-family: monospace;
-      line-height: 1.4;
+      line-height: 1.45;
+      word-break: break-all;
     }
   </style>
 </head>
@@ -272,20 +274,29 @@
         <span>掃描 / 實體鍵盤輸入區</span>
         <span class="focus-badge" id="focusBadge">已鎖定輸入</span>
       </div>
-      <!-- 用 form 包起來，按 Enter 也會觸發 submit，同時保留 keydown 監聽 -->
       <form class="input-row" onsubmit="handleFormSubmit(event)">
-        <input type="text" id="scanInput" autocomplete="off" placeholder="掃描或輸入 ISBN..." />
+        <input
+          type="text"
+          id="scanInput"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          inputmode="text"
+          enterkeyhint="done"
+          placeholder="掃描或輸入 ISBN..."
+        />
         <button type="submit" class="btn-submit">確認</button>
       </form>
       <div class="hint-text">
         • 掃描或輸入 <b>ISBN</b> 後按 <b>Enter</b>（或點「確認」）：上一筆存檔，新 ISBN 數量預設 <b>1</b><br/>
-        • 如需修改書號或數量，可直接點選下方「書號」或「數量」方格修改
+        • 支援半形/全形數字與 <b>X</b>，會自動移除連字號或空白；點「存入明細並清空」可立即把目前這筆移入下方明細表
       </div>
     </div>
 
     <div class="current-card">
       <div class="card-tag">
-        <span>▶ 目前這一筆</span>
+        <span>▶ 目前這一筆（未存入明細表前可改數量）</span>
         <span style="color:#6b7280; font-weight:normal; font-size:11px;">點擊方格可修改</span>
       </div>
       <div class="curr-field-row">
@@ -311,6 +322,7 @@
     </div>
 
     <div class="btn-grid">
+      <button type="button" class="btn-commit-now" onclick="commitCurrentAndReset()">存入目前這筆至明細表</button>
       <button type="button" class="btn-upload" id="btnUpload" onclick="uploadToSheet()">☁ 上傳至 Google 試算表</button>
       <button type="button" class="btn-del" onclick="deleteCurrent()">刪除目前這一筆</button>
       <button type="button" class="btn-clear" onclick="clearAll()">清空全部紀錄</button>
@@ -341,10 +353,11 @@
 
   <script>
     // ★ 請將你的 Google Apps Script 網頁應用程式網址貼在下方引號內：
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzH-PmvqAQWMhI6TzZ80Uq1rVnRBNH2uBRt-rydxJQIEyFSqizCl61gF6nRgwtzZmOk/exec';
+    const GAS_URL = 'https://script.google.com/exec';
 
     let currentItem = null;
     let historyList = [];
+    let isComposing = false;
 
     const scanInput = document.getElementById('scanInput');
     const focusBadge = document.getElementById('focusBadge');
@@ -358,16 +371,20 @@
         if (savedCurr) currentItem = JSON.parse(savedCurr);
         if (savedList) historyList = JSON.parse(savedList);
         if (savedMerge === 'true') document.getElementById('mergeSameIsbn').checked = true;
-      } catch (e) {}
+      } catch (e) {
+        updateDiag('讀取本機儲存失敗：' + e.message);
+      }
       render();
-      setTimeout(() => focusInput(), 50);
+      setTimeout(() => focusInput(), 80);
     });
 
     function saveState() {
       try {
         localStorage.setItem('pda_curr', JSON.stringify(currentItem));
         localStorage.setItem('pda_list', JSON.stringify(historyList));
-      } catch (e) {}
+      } catch (e) {
+        updateDiag('寫入本機儲存失敗（可能為無痕或受限瀏覽器）：' + e.message);
+      }
     }
 
     function saveSettings() {
@@ -381,69 +398,115 @@
       try {
         scanInput.focus({ preventScroll: true });
       } catch (e) {
-        scanInput.focus();
+        try { scanInput.focus(); } catch (_) {}
       }
+    }
+
+    function normalizeFullWidth(str) {
+      return (str || '').replace(/[\uFF01-\uFF5E]/g, ch =>
+        String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)
+      );
+    }
+
+    function cleanIsbn(rawText) {
+      const halfWidth = normalizeFullWidth(rawText || '').trim();
+      return halfWidth.replace(/[^0-9Xx]/g, '').toUpperCase();
+    }
+
+    function updateDiag(extraLine) {
+      const currText = currentItem ? `${currentItem.isbn} (數量:${currentItem.qty})` : '無';
+      diagBar.innerHTML =
+        `${extraLine}<br/>` +
+        `輸入框值: "<b>${scanInput.value}</b>" | 目前品項: <b>${currText}</b> | 已存明細: <b>${historyList.length}</b> 筆`;
     }
 
     scanInput.addEventListener('focus', () => {
       focusBadge.textContent = '已鎖定輸入';
       focusBadge.classList.remove('lost');
     });
+
     scanInput.addEventListener('blur', () => {
       focusBadge.textContent = '點擊此處恢復輸入';
       focusBadge.classList.add('lost');
     });
 
+    scanInput.addEventListener('compositionstart', () => {
+      isComposing = true;
+    });
+
+    scanInput.addEventListener('compositionend', () => {
+      isComposing = false;
+      scanInput.value = normalizeFullWidth(scanInput.value);
+      updateDiag('輸入法組字完成');
+    });
+
     function handleFormSubmit(e) {
       if (e) e.preventDefault();
-      processInput(scanInput.value);
+      if (isComposing) return;
+      processInput(scanInput.value, '表單確認/Enter');
       focusInput();
     }
 
     window.addEventListener('keydown', (e) => {
       const targetTag = e.target && e.target.tagName ? e.target.tagName : 'UNKNOWN';
-      diagBar.innerHTML =
-        `按鍵: key="<b>${e.key}</b>" | code="${e.code}" | keyCode=${e.keyCode} | 焦點在: <b>${targetTag}</b><br/>` +
-        `目前輸入框值: "<b>${scanInput.value}</b>" | 目前品項: ${currentItem ? currentItem.isbn + ' (數量:' + currentItem.qty + ')' : '無'}`;
+      const keyInfo = `按鍵: key="<b>${e.key}</b>" | code="${e.code || ''}" | keyCode=${e.keyCode || 0} | 焦點: <b>${targetTag}</b>`;
+
+      if (isComposing) {
+        updateDiag(keyInfo + '（組字中）');
+        return;
+      }
 
       if (document.activeElement !== scanInput && targetTag !== 'BUTTON' && targetTag !== 'INPUT') {
-        if (/^[0-9xX]$/.test(e.key)) {
+        if (/^[0-9xX]$/.test(normalizeFullWidth(e.key))) {
           focusInput();
         }
       }
 
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        if (document.activeElement === scanInput || /^[0-9xX]$/.test(scanInput.value.trim())) {
-          e.preventDefault();
-          processInput(scanInput.value);
-          focusInput();
-        }
+      const isEnter = e.key === 'Enter' || e.keyCode === 13;
+      const isTab = e.key === 'Tab' || e.keyCode === 9;
+
+      if ((isEnter || isTab) && document.activeElement === scanInput) {
+        e.preventDefault();
+        processInput(scanInput.value, `按鍵 ${e.key}`);
+        focusInput();
+        return;
       }
+
+      updateDiag(keyInfo);
     }, true);
 
     scanInput.addEventListener('input', () => {
-      const raw = scanInput.value;
-      diagBar.innerHTML =
-        `輸入事件觸發 | 輸入框值: "<b>${raw}</b>" | 目前品項: ${currentItem ? currentItem.isbn + ' (數量:' + currentItem.qty + ')' : '無'}`;
+      const normalized = normalizeFullWidth(scanInput.value);
+      if (scanInput.value !== normalized) {
+        scanInput.value = normalized;
+      }
+      updateDiag('輸入事件觸發');
     });
 
-    // 輸入區只處理 ISBN：上一筆存檔，新 ISBN 數量預設 1
-    function processInput(rawText) {
-      const val = (rawText || '').trim().replace(/[^0-9Xx]/g, '');
+    function processInput(rawText, sourceLabel = '輸入') {
+      const rawTrimmed = (rawText || '').trim();
+      const val = cleanIsbn(rawText);
       scanInput.value = '';
 
       if (!val) {
-        setStatus('輸入為空');
+        if (rawTrimmed) {
+          setStatus('ISBN 格式無效');
+          updateDiag(`⚠️ 略過無效輸入："${rawTrimmed}"（未含數字或 X）`);
+        } else {
+          setStatus('輸入為空');
+          updateDiag(`⚠️ ${sourceLabel} 時輸入框為空`);
+        }
         return;
       }
 
       if (currentItem) {
         commitCurrentItem();
       }
-      currentItem = { isbn: val.toUpperCase(), qty: 1 };
+      currentItem = { isbn: val, qty: 1 };
       setStatus(`✔ 已錄入 ${currentItem.isbn} (數量 1)`);
       saveState();
       render();
+      updateDiag(`✔ ${sourceLabel} 成功錄入 <b>${val}</b>`);
     }
 
     function commitCurrentItem() {
@@ -461,6 +524,27 @@
       historyList.unshift({ ...currentItem });
     }
 
+    function commitCurrentAndReset() {
+      const pendingVal = cleanIsbn(scanInput.value);
+      if (pendingVal) {
+        processInput(pendingVal, '存入明細');
+      }
+      if (!currentItem) {
+        setStatus('目前沒有可存入的品項');
+        focusInput();
+        return;
+      }
+      const savedIsbn = currentItem.isbn;
+      const savedQty = currentItem.qty;
+      commitCurrentItem();
+      currentItem = null;
+      setStatus(`✔ 已存入明細 ${savedIsbn} × ${savedQty}`);
+      saveState();
+      render();
+      updateDiag(`✔ 已將 <b>${savedIsbn}</b> (數量 ${savedQty}) 移入明細表`);
+      focusInput();
+    }
+
     function setStatus(msg) {
       document.getElementById('statusMsg').textContent = msg;
     }
@@ -469,7 +553,7 @@
       if (!currentItem) return;
       const input = prompt('修改目前這一筆的「書號 (ISBN)」：', currentItem.isbn);
       if (input !== null) {
-        const cleaned = input.trim().replace(/[^0-9Xx]/g, '').toUpperCase();
+        const cleaned = cleanIsbn(input);
         if (cleaned) {
           currentItem.isbn = cleaned;
           setStatus(`✔ 書號改為 ${cleaned}`);
@@ -484,7 +568,7 @@
       if (!currentItem) return;
       const input = prompt(`修改目前這本 (${currentItem.isbn}) 的「數量」：`, currentItem.qty);
       if (input !== null) {
-        const n = parseInt(input.trim(), 10);
+        const n = parseInt(normalizeFullWidth(input).trim(), 10);
         if (!isNaN(n) && n > 0) {
           currentItem.qty = n;
           setStatus(`✔ 數量改為 ${n}`);
@@ -522,7 +606,7 @@
       const target = historyList[index];
       const input = prompt(`修改 ISBN: ${target.isbn} 的數量：`, target.qty);
       if (input !== null) {
-        const n = parseInt(input.trim(), 10);
+        const n = parseInt(normalizeFullWidth(input).trim(), 10);
         if (!isNaN(n) && n > 0) {
           target.qty = n;
           saveState();
@@ -582,6 +666,11 @@
         alert('請先在 HTML 程式碼的 GAS_URL 填入你的 Apps Script 網址！');
         focusInput();
         return;
+      }
+
+      const pendingVal = cleanIsbn(scanInput.value);
+      if (pendingVal) {
+        processInput(pendingVal, '上傳前補錄');
       }
 
       const previewItemsCount = historyList.length + (currentItem ? 1 : 0);
@@ -650,7 +739,6 @@
         focusInput();
       }
     }
-
   </script>
 </body>
 </html>
