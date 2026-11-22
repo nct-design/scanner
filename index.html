@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDA 盤點批次檢視與 .DAT 下載工具 v2</title>
+  <style>
+    :root {
+      --bg: #f3f5f8;
+      --card: #ffffff;
+      --primary: #1a56db;
+      --accent: #0e9f6e;
+      --purple: #7e3af2;
+      --danger: #e02424;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #d1d5db;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; }
+    body {
+      margin: 0;
+      padding: 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+    }
+    .container {
+      max-width: 780px;
+      margin: 0 auto;
+    }
+    .header-card {
+      background: #1f2937;
+      color: #fff;
+      padding: 16px 20px;
+      border-radius: 12px;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .header-title { font-size: 20px; font-weight: 800; }
+    .header-sub { font-size: 13px; color: #9ca3af; margin-top: 3px; }
+    .btn-refresh {
+      background: #374151;
+      color: #fff;
+      border: 1px solid #4b5563;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-refresh:hover { background: #4b5563; }
+    .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .action-bar {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .select-info { font-size: 14px; font-weight: 700; color: #374151; }
+    .select-info span { color: var(--primary); font-size: 18px; font-family: monospace; }
+    .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-dl {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-dl:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-merge { background: var(--primary); }
+    .btn-merge:hover:not(:disabled) { background: #1e429f; }
+    .btn-split { background: var(--accent); }
+    .btn-split:hover:not(:disabled) { background: #046c4e; }
+
+    .options-row {
+      width: 100%;
+      padding-top: 10px;
+      border-top: 1px solid #f3f4f6;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .options-row label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      color: #374151;
+    }
+
+    .table-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td {
+      padding: 11px 8px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th { background: #f9fafb; color: #4b5563; font-size: 13px; font-weight: 700; }
+    tr:hover td { background: #f8fafc; }
+    tr.selected td { background: #eff6ff; }
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--primary);
+    }
+    .mono { font-family: monospace; font-weight: 700; font-size: 15px; }
+    .num { text-align: right; font-family: monospace; font-weight: 700; color: var(--primary); font-size: 15px; }
+    .btn-preview {
+      background: #f3f4f6;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-preview:hover { background: #e5e7eb; }
+
+    .status-bar {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #374151;
+      background: #e5e7eb;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: monospace;
+      line-height: 1.5;
+    }
+
+    /* 備用預覽與手動下載區 */
+    .fallback-box {
+      display: none;
+      margin-top: 14px;
+      background: #fff;
+      border: 2px solid var(--primary);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .fallback-box.show { display: block; }
+    .fallback-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .fallback-title { font-weight: 700; color: var(--primary); font-size: 14px; }
+    .fallback-actions { display: flex; gap: 8px; }
+    .btn-copy {
+      background: #374151;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-direct-link {
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    #fallbackTextarea {
+      width: 100%;
+      height: 150px;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #f9fafb;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    /* 明細預覽彈窗 */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal-box {
+      background: #fff;
+      border-radius: 12px;
+      max-width: 520px;
+      width: 100%;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+    .modal-header {
+      padding: 14px 18px;
+      background: #1f2937;
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .modal-body {
+      padding: 14px 18px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-card">
+      <div>
+        <div class="header-title">📦 PDA 盤點批次檢視與 .DAT 下載</div>
+        <div class="header-sub">從 Google 試算表讀取 Batches，可單選或全選匯出固定格式 .DAT</div>
+      </div>
+      <button type="button" class="btn-refresh" id="btnRefresh" onclick="loadBatches()">🔄 重新整理</button>
+    </div>
+
+    <div class="action-bar">
+      <div class="select-info">
+        已勾選 <span id="selectedCount">0</span> 筆批次
+        （合計 <span id="selectedQty">0</span> 冊）
+      </div>
+      <div class="action-buttons">
+        <button type="button" class="btn-dl btn-merge" id="btnMergeDl" onclick="downloadMerged()" disabled>
+          ⬇ 整合下載（合併為 1 個 .DAT 檔）
+        </button>
+        <button type="button" class="btn-dl btn-split" id="btnSplitDl" onclick="downloadSplit()" disabled>
+          📑 分檔下載（每批次 1 個 .DAT 檔）
+        </button>
+      </div>
+      <div class="options-row">
+        <label>
+          <input type="checkbox" id="mergeSameIsbnInCombined" />
+          整合下載時，相同 ISBN 自動合併加總數量
+        </label>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:42px; text-align:center;">
+              <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" title="全選 / 取消全選" />
+            </th>
+            <th>批次號碼</th>
+            <th>上傳時間</th>
+            <th style="text-align:right;">品項數</th>
+            <th style="text-align:right;">總冊數</th>
+            <th style="width:76px; text-align:center;">明細</th>
+          </tr>
+        </thead>
+        <tbody id="batchTableBody">
+          <tr>
+            <td colspan="6" style="text-align:center; padding:24px; color:#6b7280;">載入中，請稍候...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="status-bar" id="statusBar">狀態：準備讀取 Google 試算表資料...</div>
+
+    <!-- 若瀏覽器阻擋自動下載時的備用儲存與預覽區 -->
+    <div class="fallback-box" id="fallbackBox">
+      <div class="fallback-header">
+        <span class="fallback-title" id="fallbackTitle">📄 已產生的 .DAT 檔案內容（若未自動下載可點右側另存）</span>
+        <div class="fallback-actions">
+          <a id="directDownloadLink" class="btn-direct-link" href="#" download="SCAN.dat">⬇ 點此直接下載 .DAT</a>
+          <button type="button" class="btn-copy" onclick="copyFallbackContent()">📋 複製全部內容</button>
+        </div>
+      </div>
+      <textarea id="fallbackTextarea" readonly></textarea>
+    </div>
+  </div>
+
+  <!-- 明細預覽彈窗 -->
+  <div class="modal-backdrop" id="previewModal" onclick="closeModalOnBackdrop(event)">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span id="modalTitle">批次明細</span>
+        <button type="button" class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th>ISBN</th>
+              <th style="text-align:right;">數量</th>
+            </tr>
+          </thead>
+          <tbody id="modalTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ★ 請將你的 Google Apps Script 網頁應用程式網址貼在下方引號內：
+    const GAS_URL = 'https://script.google.com/exec';
+
+    let batchList = [];
+    let selectedIds = new Set();
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadBatches();
+    });
+
+    function setStatus(msg) {
+      document.getElementById('statusBar').textContent = '狀態：' + msg;
+    }
+
+    async function loadBatches() {
+      if (!GAS_URL || GAS_URL.includes('請替換成你的部署ID')) {
+        setStatus('❌ 尚未設定 GAS_URL，請在程式碼中填入 Apps Script 網址');
+        document.getElementById('batchTableBody').innerHTML =
+          '<tr><td colspan="6" style="text-align:center; padding:24px; color:#b91c1c;">請先在 HTML 的 GAS_URL 填入你的 Apps Script 網址！</td></tr>';
+        return;
+      }
+
+      const btn = document.getElementById('btnRefresh');
+      btn.disabled = true;
+      setStatus('正在從 Google 試算表讀取 Batches...');
+
+      try {
+        const res = await fetch(GAS_URL + '?action=listBatches', { method: 'GET' });
+        const data = await res.json();
+
+        if (!data.success) {
+          throw new Error(data.error || '讀取失敗');
+        }
+
+        batchList = data.batches || [];
+        selectedIds.clear();
+        renderTable();
+        setStatus('✔ 已載入 ' + batchList.length + ' 筆批次資料');
+      } catch (err) {
+        setStatus('❌ 讀取失敗：' + err.message);
+        document.getElementById('batchTableBody').innerHTML =
+          '<tr><td colspan="6" style="text-align:center; padding:24px; color:#b91c1c;">讀取失敗：' + err.message + '</td></tr>';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('batchTableBody');
+      tbody.innerHTML = '';
+
+      if (batchList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:#6b7280;">目前試算表中尚無任何批次資料</td></tr>';
+        updateSelectionUI();
+        return;
+      }
+
+      batchList.forEach(batch => {
+        const isChecked = selectedIds.has(batch.batchId);
+        const tr = document.createElement('tr');
+        if (isChecked) tr.classList.add('selected');
+
+        tr.innerHTML = `
+          <td style="text-align:center;">
+            <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleRow('${batch.batchId}', this.checked)" />
+          </td>
+          <td class="mono">${batch.batchId}</td>
+          <td style="color:#4b5563; font-size:13px;">${batch.uploadTime || '-'}</td>
+          <td class="num">${batch.totalItems}</td>
+          <td class="num">${batch.totalQty}</td>
+          <td style="text-align:center;">
+            <button type="button" class="btn-preview" onclick="previewBatch('${batch.batchId}')">檢視</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      updateSelectionUI();
+    }
+
+    function toggleRow(batchId, checked) {
+      if (checked) {
+        selectedIds.add(batchId);
+      } else {
+        selectedIds.delete(batchId);
+      }
+      renderTable();
+    }
+
+    function toggleSelectAll(checked) {
+      selectedIds.clear();
+      if (checked) {
+        batchList.forEach(b => selectedIds.add(b.batchId));
+      }
+      renderTable();
+    }
+
+    function updateSelectionUI() {
+      const count = selectedIds.size;
+      let totalQty = 0;
+      batchList.forEach(b => {
+        if (selectedIds.has(b.batchId)) {
+          totalQty += Number(b.totalQty || 0);
+        }
+      });
+
+      document.getElementById('selectedCount').textContent = count;
+      document.getElementById('selectedQty').textContent = totalQty;
+      document.getElementById('btnMergeDl').disabled = count === 0;
+      document.getElementById('btnSplitDl').disabled = count === 0;
+
+      const selectAllCb = document.getElementById('selectAllCheckbox');
+      if (batchList.length > 0 && count === batchList.length) {
+        selectAllCb.checked = true;
+        selectAllCb.indeterminate = false;
+      } else if (count > 0) {
+        selectAllCb.checked = false;
+        selectAllCb.indeterminate = true;
+      } else {
+        selectAllCb.checked = false;
+        selectAllCb.indeterminate = false;
+      }
+    }
+
+    function buildDatContent(items) {
+      const lines = items.map(item => {
+        const prefixSpaces = ' '.repeat(29);
+        const isbnField = String(item.isbn).trim().toUpperCase().padEnd(13, ' ');
+        const qtyField = String(item.qty).padStart(6, ' ');
+        const suffixZero = '0';
+        return prefixSpaces + isbnField + qtyField + suffixZero;
+      });
+      return lines.join('\r\n') + '\r\n';
+    }
+
+    // 同時使用 Data URI 觸發下載，並把內容顯示在下方備用區
+    function triggerDownload(content, filename) {
+      const dataUri = 'data:application/octet-stream;charset=utf-8,' + encodeURIComponent(content);
+
+      const fallbackBox = document.getElementById('fallbackBox');
+      const directLink = document.getElementById('directDownloadLink');
+      document.getElementById('fallbackTitle').textContent = `📄 最新產生的檔案：${filename}`;
+      document.getElementById('fallbackTextarea').value = content;
+      directLink.href = dataUri;
+      directLink.download = filename;
+      fallbackBox.classList.add('show');
+
+      const a = document.createElement('a');
+      a.href = dataUri;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function copyFallbackContent() {
+      const ta = document.getElementById('fallbackTextarea');
+      ta.select();
+      document.execCommand('copy');
+      setStatus('✔ 已複製 .DAT 全部內容到剪貼簿！');
+    }
+
+    async function fetchBatchItems(batchIds) {
+      const url = GAS_URL + '?action=getBatchItems&batchIds=' + encodeURIComponent(batchIds.join(','));
+      const res = await fetch(url, { method: 'GET' });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || '取得批次明細失敗');
+      }
+      return data.itemsByBatch || {};
+    }
+
+    async function downloadMerged() {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+
+      setStatus('正在抓取明細並整合為 1 個 .DAT 檔...');
+      try {
+        const itemsByBatch = await fetchBatchItems(ids);
+        let combinedItems = [];
+        ids.forEach(id => {
+          const list = itemsByBatch[id] || [];
+          combinedItems = combinedItems.concat(list);
+        });
+
+        if (combinedItems.length === 0) {
+          const msg = '試算表中找不到所選批次的明細資料！請檢查 Apps Script 的明細工作表名稱（預設為 Items 或 ScanDetails）與欄位順序是否正確。';
+          setStatus('❌ ' + msg);
+          alert(msg);
+          return;
+        }
+
+        if (document.getElementById('mergeSameIsbnInCombined').checked) {
+          const map = new Map();
+          combinedItems.forEach(it => {
+            const key = String(it.isbn).trim().toUpperCase();
+            map.set(key, (map.get(key) || 0) + Number(it.qty));
+          });
+          combinedItems = Array.from(map.entries()).map(([isbn, qty]) => ({ isbn, qty }));
+        }
+
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const filename = ids.length === 1
+          ? `SCAN_${ids[0]}.dat`
+          : `SCAN_MERGED_${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.dat`;
+
+        triggerDownload(buildDatContent(combinedItems), filename);
+        setStatus(`✔ 整合下載完成：${filename}（共 ${combinedItems.length} 筆）。若瀏覽器未自動存檔，請點下方綠色「直接下載 .DAT」按鈕。`);
+      } catch (err) {
+        setStatus('❌ 下載失敗：' + err.message);
+        alert('下載失敗：' + err.message);
+      }
+    }
+
+    async function downloadSplit() {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+
+      setStatus(`正在抓取明細並分檔下載（已勾選 ${ids.length} 個批次）...`);
+      try {
+        const itemsByBatch = await fetchBatchItems(ids);
+        let exportedCount = 0;
+
+        for (let i = 0; i < ids.length; i++) {
+          const id = ids[i];
+          const list = itemsByBatch[id] || [];
+          if (list.length === 0) continue;
+
+          const filename = `SCAN_${id}.dat`;
+          triggerDownload(buildDatContent(list), filename);
+          exportedCount++;
+
+          if (i < ids.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 350));
+          }
+        }
+
+        if (exportedCount === 0) {
+          const msg = '試算表中找不到所選批次的明細資料！因此未匯出任何檔案。請檢查 Apps Script 的明細工作表名稱（預設為 Items 或 ScanDetails）與欄位順序。';
+          setStatus('❌ ' + msg);
+          alert(msg);
+          return;
+        }
+
+        setStatus(`✔ 分檔下載完成，實際匯出 ${exportedCount} 個 .DAT 檔案。若瀏覽器未自動存檔，請見下方備用下載區。`);
+      } catch (err) {
+        setStatus('❌ 分檔下載失敗：' + err.message);
+        alert('分檔下載失敗：' + err.message);
+      }
+    }
+
+    async function previewBatch(batchId) {
+      setStatus(`正在載入批次 ${batchId} 明細...`);
+      try {
+        const itemsByBatch = await fetchBatchItems([batchId]);
+        const items = itemsByBatch[batchId] || [];
+
+        if (items.length === 0) {
+          const msg = `批次 ${batchId} 在明細表中查無資料（0 筆），請確認試算表明細分頁名稱與欄位。`;
+          setStatus('⚠️ ' + msg);
+          alert(msg);
+          return;
+        }
+
+        document.getElementById('modalTitle').textContent = `批次明細：${batchId}（共 ${items.length} 筆）`;
+        const tbody = document.getElementById('modalTableBody');
+        tbody.innerHTML = '';
+
+        items.forEach((it, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="color:#9ca3af;">${idx + 1}</td>
+            <td class="mono">${it.isbn}</td>
+            <td class="num">${it.qty}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        document.getElementById('previewModal').classList.add('show');
+        setStatus(`✔ 已顯示批次 ${batchId} 明細（共 ${items.length} 筆）`);
+      } catch (err) {
+        setStatus('❌ 載入明細失敗：' + err.message);
+        alert('載入明細失敗：' + err.message);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('previewModal').classList.remove('show');
+    }
+
+    function closeModalOnBackdrop(e) {
+      if (e.target.id === 'previewModal') closeModal();
+    }
+  </script>
+</body>
+</html>
