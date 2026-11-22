@@ -357,7 +357,6 @@
 
     let currentItem = null;
     let historyList = [];
-    let isComposing = false;
 
     const scanInput = document.getElementById('scanInput');
     const focusBadge = document.getElementById('focusBadge');
@@ -375,7 +374,7 @@
         updateDiag('讀取本機儲存失敗：' + e.message);
       }
       render();
-      setTimeout(() => focusInput(), 80);
+      setTimeout(() => focusInput(), 100);
     });
 
     function saveState() {
@@ -383,7 +382,7 @@
         localStorage.setItem('pda_curr', JSON.stringify(currentItem));
         localStorage.setItem('pda_list', JSON.stringify(historyList));
       } catch (e) {
-        updateDiag('寫入本機儲存失敗（可能為無痕或受限瀏覽器）：' + e.message);
+        updateDiag('寫入本機儲存失敗：' + e.message);
       }
     }
 
@@ -415,64 +414,56 @@
 
     function updateDiag(extraLine) {
       const currText = currentItem ? `${currentItem.isbn} (數量:${currentItem.qty})` : '無';
+      const activeTag = document.activeElement && document.activeElement.tagName ? document.activeElement.tagName : 'NONE';
       diagBar.innerHTML =
         `${extraLine}<br/>` +
-        `輸入框值: "<b>${scanInput.value}</b>" | 目前品項: <b>${currText}</b> | 已存明細: <b>${historyList.length}</b> 筆`;
+        `輸入框: "<b>${scanInput.value}</b>" | 焦點: <b>${activeTag}</b> | 目前: <b>${currText}</b> | 已存: <b>${historyList.length}</b> 筆`;
     }
 
     scanInput.addEventListener('focus', () => {
       focusBadge.textContent = '已鎖定輸入';
       focusBadge.classList.remove('lost');
+      updateDiag('輸入框已取得焦點');
     });
 
     scanInput.addEventListener('blur', () => {
       focusBadge.textContent = '點擊此處恢復輸入';
       focusBadge.classList.add('lost');
-    });
-
-    scanInput.addEventListener('compositionstart', () => {
-      isComposing = true;
-    });
-
-    scanInput.addEventListener('compositionend', () => {
-      isComposing = false;
-      scanInput.value = normalizeFullWidth(scanInput.value);
-      updateDiag('輸入法組字完成');
+      updateDiag('輸入框失去焦點');
     });
 
     function handleFormSubmit(e) {
-      if (e) e.preventDefault();
-      if (isComposing) return;
-      processInput(scanInput.value, '表單確認/Enter');
-      focusInput();
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      processInput(scanInput.value, '表單送出/確認');
+      setTimeout(() => focusInput(), 20);
     }
 
+    // 同時監聽 keydown 與 keyup，相容 Android PDA 實體按鍵與軟鍵盤
     window.addEventListener('keydown', (e) => {
       const targetTag = e.target && e.target.tagName ? e.target.tagName : 'UNKNOWN';
-      const keyInfo = `按鍵: key="<b>${e.key}</b>" | code="${e.code || ''}" | keyCode=${e.keyCode || 0} | 焦點: <b>${targetTag}</b>`;
+      const key = e.key || '';
+      const code = e.code || '';
+      const keyCode = e.keyCode || e.which || 0;
 
-      if (isComposing) {
-        updateDiag(keyInfo + '（組字中）');
-        return;
-      }
-
-      if (document.activeElement !== scanInput && targetTag !== 'BUTTON' && targetTag !== 'INPUT') {
-        if (/^[0-9xX]$/.test(normalizeFullWidth(e.key))) {
+      if (document.activeElement !== scanInput && targetTag !== 'BUTTON' && targetTag !== 'INPUT' && targetTag !== 'TEXTAREA') {
+        if (/^[0-9xX]$/.test(normalizeFullWidth(key))) {
           focusInput();
         }
       }
 
-      const isEnter = e.key === 'Enter' || e.keyCode === 13;
-      const isTab = e.key === 'Tab' || e.keyCode === 9;
+      const isEnter = key === 'Enter' || keyCode === 13 || code === 'Enter' || code === 'NumpadEnter';
+      const isTab = key === 'Tab' || keyCode === 9;
 
-      if ((isEnter || isTab) && document.activeElement === scanInput) {
-        e.preventDefault();
-        processInput(scanInput.value, `按鍵 ${e.key}`);
-        focusInput();
-        return;
+      if (isEnter || isTab) {
+        if (document.activeElement === scanInput || scanInput.value.trim().length > 0) {
+          if (e && typeof e.preventDefault === 'function') e.preventDefault();
+          processInput(scanInput.value, `keydown(${key || keyCode})`);
+          setTimeout(() => focusInput(), 20);
+          return;
+        }
       }
 
-      updateDiag(keyInfo);
+      updateDiag(`keydown key="<b>${key}</b>" code="${code}" keyCode=${keyCode} target=${targetTag}`);
     }, true);
 
     scanInput.addEventListener('input', () => {
@@ -480,7 +471,15 @@
       if (scanInput.value !== normalized) {
         scanInput.value = normalized;
       }
-      updateDiag('輸入事件觸發');
+      updateDiag(`input 事件：目前值="<b>${scanInput.value}</b>"`);
+    });
+
+    scanInput.addEventListener('change', () => {
+      const normalized = normalizeFullWidth(scanInput.value);
+      if (scanInput.value !== normalized) {
+        scanInput.value = normalized;
+      }
+      updateDiag(`change 事件：目前值="<b>${scanInput.value}</b>"`);
     });
 
     function processInput(rawText, sourceLabel = '輸入') {
@@ -491,7 +490,7 @@
       if (!val) {
         if (rawTrimmed) {
           setStatus('ISBN 格式無效');
-          updateDiag(`⚠️ 略過無效輸入："${rawTrimmed}"（未含數字或 X）`);
+          updateDiag(`⚠️ 略過無效輸入："${rawTrimmed}"`);
         } else {
           setStatus('輸入為空');
           updateDiag(`⚠️ ${sourceLabel} 時輸入框為空`);
