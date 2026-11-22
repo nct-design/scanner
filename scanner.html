@@ -250,6 +250,71 @@
       line-height: 1.45;
       word-break: break-all;
     }
+    .ui-modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.55);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .ui-modal-backdrop.show {
+      display: flex;
+    }
+    .ui-modal-box {
+      background: #ffffff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 380px;
+      padding: 16px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.25);
+    }
+    .ui-modal-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: #111827;
+      margin-bottom: 10px;
+    }
+    .ui-modal-msg {
+      font-size: 14px;
+      color: #374151;
+      line-height: 1.5;
+      margin-bottom: 12px;
+      white-space: pre-line;
+    }
+    .ui-modal-input {
+      width: 100%;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 10px 12px;
+      border: 2px solid #1a56db;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      font-family: monospace;
+    }
+    .ui-modal-btns {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .ui-btn-cancel {
+      background: #e5e7eb;
+      color: #374151;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .ui-btn-ok {
+      background: #1a56db;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -548,9 +613,17 @@
       document.getElementById('statusMsg').textContent = msg;
     }
 
-    function promptCurrentIsbn() {
-      if (!currentItem) return;
-      const input = prompt('修改目前這一筆的「書號 (ISBN)」：', currentItem.isbn);
+    async function promptCurrentIsbn() {
+      if (!currentItem) {
+        updateDiag('⚠️ 目前沒有「目前這一筆」，無法修改書號');
+        return;
+      }
+      const input = await customDialog({
+        title: '修改目前這一筆的「書號 (ISBN)」',
+        showInput: true,
+        defaultValue: currentItem.isbn,
+        inputMode: 'text'
+      });
       if (input !== null) {
         const cleaned = cleanIsbn(input);
         if (cleaned) {
@@ -563,9 +636,17 @@
       focusInput();
     }
 
-    function promptCurrentQty() {
-      if (!currentItem) return;
-      const input = prompt(`修改目前這本 (${currentItem.isbn}) 的「數量」：`, currentItem.qty);
+    async function promptCurrentQty() {
+      if (!currentItem) {
+        updateDiag('⚠️ 目前沒有「目前這一筆」，無法修改數量');
+        return;
+      }
+      const input = await customDialog({
+        title: `修改數量 (${currentItem.isbn})`,
+        showInput: true,
+        defaultValue: String(currentItem.qty),
+        inputMode: 'numeric'
+      });
       if (input !== null) {
         const n = parseInt(normalizeFullWidth(input).trim(), 10);
         if (!isNaN(n) && n > 0) {
@@ -587,9 +668,15 @@
       focusInput();
     }
 
-    function clearAll() {
+    async function clearAll() {
       if (!currentItem && historyList.length === 0) return;
-      if (!confirm('確定要清空所有已掃描的資料嗎？')) {
+      const ok = await customDialog({
+        title: '清空全部紀錄',
+        message: '確定要清空所有已掃描的資料嗎？',
+        showInput: false,
+        showCancel: true
+      });
+      if (!ok) {
         focusInput();
         return;
       }
@@ -601,9 +688,15 @@
       focusInput();
     }
 
-    function editHistoryQty(index) {
+    async function editHistoryQty(index) {
       const target = historyList[index];
-      const input = prompt(`修改 ISBN: ${target.isbn} 的數量：`, target.qty);
+      if (!target) return;
+      const input = await customDialog({
+        title: `修改明細數量 (${target.isbn})`,
+        showInput: true,
+        defaultValue: String(target.qty),
+        inputMode: 'numeric'
+      });
       if (input !== null) {
         const n = parseInt(normalizeFullWidth(input).trim(), 10);
         if (!isNaN(n) && n > 0) {
@@ -662,7 +755,7 @@
 
     async function uploadToSheet() {
       if (!GAS_URL || GAS_URL.includes('請替換成你的部署ID')) {
-        alert('請先在 HTML 程式碼的 GAS_URL 填入你的 Apps Script 網址！');
+        await customDialog({ title: '設定提醒', message: '請先在 HTML 程式碼的 GAS_URL 填入你的 Apps Script 網址！', showCancel: false });
         focusInput();
         return;
       }
@@ -676,12 +769,17 @@
       const previewQtyCount = historyList.reduce((sum, item) => sum + item.qty, 0) + (currentItem ? currentItem.qty : 0);
 
       if (previewItemsCount === 0) {
-        alert('目前沒有任何掃描資料可以上傳！');
+        await customDialog({ title: '無法上傳', message: '目前沒有任何掃描資料可以上傳！', showCancel: false });
         focusInput();
         return;
       }
 
-      if (!confirm('確定要上傳這批盤點資料至 Google 試算表嗎？\n\n總品項：' + previewItemsCount + ' 筆\n總冊數：' + previewQtyCount + ' 冊')) {
+      const okUpload = await customDialog({
+        title: '確認上傳',
+        message: '確定要上傳這批盤點資料至 Google 試算表嗎？\n\n總品項：' + previewItemsCount + ' 筆\n總冊數：' + previewQtyCount + ' 冊',
+        showCancel: true
+      });
+      if (!okUpload) {
         focusInput();
         return;
       }
@@ -712,12 +810,13 @@
         if (result.success) {
           setStatus('✔ 已上傳 ' + result.batchId);
           diagBar.innerHTML = '✔ 上傳成功！批次號碼：<b>' + result.batchId + '</b>（' + result.totalItems + ' 品項 / ' + result.totalQty + ' 冊）';
-          const nextOrder = confirm(
-            '上傳成功！\n' +
-            '批次號碼：' + result.batchId + '\n' +
-            '總品項：' + result.totalItems + ' 筆 / 總冊數：' + result.totalQty + ' 冊\n\n' +
-            '是否開始「下一單」並刪除目前畫面上的掃描明細？'
-          );
+          const nextOrder = await customDialog({
+            title: '上傳成功',
+            message: '批次號碼：' + result.batchId + '\n' +
+              '總品項：' + result.totalItems + ' 筆 / 總冊數：' + result.totalQty + ' 冊\n\n' +
+              '是否開始「下一單」並刪除目前畫面上的掃描明細？',
+            showCancel: true
+          });
           if (nextOrder) {
             currentItem = null;
             historyList = [];
@@ -731,13 +830,89 @@
       } catch (err) {
         setStatus('❌ 上傳失敗');
         diagBar.innerHTML = '❌ 上傳失敗：' + err.message;
-        alert('上傳失敗，請確認網路或 GAS 網址：\n' + err.message);
+        await customDialog({ title: '上傳失敗', message: '上傳失敗，請確認網路或 GAS 網址：\n' + err.message, showCancel: false });
       } finally {
         btn.disabled = false;
         btn.textContent = origText;
         focusInput();
       }
     }
+
+    function customDialog({ title = '提示', message = '', showInput = false, defaultValue = '', inputMode = 'text', showCancel = true }) {
+      return new Promise((resolve) => {
+        const backdrop = document.getElementById('uiModalBackdrop');
+        const titleEl = document.getElementById('uiModalTitle');
+        const msgEl = document.getElementById('uiModalMsg');
+        const inputEl = document.getElementById('uiModalInput');
+        const cancelBtn = document.getElementById('uiModalCancel');
+        const okBtn = document.getElementById('uiModalOk');
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        msgEl.style.display = message ? 'block' : 'none';
+
+        if (showInput) {
+          inputEl.style.display = 'block';
+          inputEl.value = defaultValue;
+          inputEl.setAttribute('inputmode', inputMode);
+        } else {
+          inputEl.style.display = 'none';
+          inputEl.value = '';
+        }
+
+        cancelBtn.style.display = showCancel ? 'inline-block' : 'none';
+        backdrop.classList.add('show');
+
+        function cleanup(result) {
+          backdrop.classList.remove('show');
+          okBtn.removeEventListener('click', onOk);
+          cancelBtn.removeEventListener('click', onCancel);
+          inputEl.removeEventListener('keydown', onKey);
+          resolve(result);
+        }
+
+        function onOk() {
+          cleanup(showInput ? inputEl.value : true);
+        }
+
+        function onCancel() {
+          cleanup(showInput ? null : false);
+        }
+
+        function onKey(e) {
+          if (e.key === 'Enter' || e.keyCode === 13) {
+            e.preventDefault();
+            onOk();
+          } else if (e.key === 'Escape' || e.keyCode === 27) {
+            e.preventDefault();
+            onCancel();
+          }
+        }
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        inputEl.addEventListener('keydown', onKey);
+
+        if (showInput) {
+          setTimeout(() => {
+            inputEl.focus();
+            inputEl.select();
+          }, 40);
+        }
+      });
+    }
+
   </script>
+  <div class="ui-modal-backdrop" id="uiModalBackdrop">
+    <div class="ui-modal-box" onclick="event.stopPropagation()">
+      <div class="ui-modal-title" id="uiModalTitle">提示</div>
+      <div class="ui-modal-msg" id="uiModalMsg"></div>
+      <input type="text" class="ui-modal-input" id="uiModalInput" style="display:none;" />
+      <div class="ui-modal-btns">
+        <button type="button" class="ui-btn-cancel" id="uiModalCancel">取消</button>
+        <button type="button" class="ui-btn-ok" id="uiModalOk">確定</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
